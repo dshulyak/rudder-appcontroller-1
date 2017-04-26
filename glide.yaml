@@ -3,6 +3,7 @@ import:
 - package: github.com/Mirantis/k8s-appcontroller
   subpackages:
   - cmd/format
+  - pkg/scheduler
 - package: github.com/nebril/helm
   version: c5bcca33fd13fb965771ac70238e54a68214813b
   subpackages:
@@ -30,4 +31,4 @@ import:
 - package: github.com/onsi/gomega
   version: v1.1.0
 - package: k8s.io/client-go
-  version: v2.0.0
+  version: v2.0.0-alpha.1

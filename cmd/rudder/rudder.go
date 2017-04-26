@@ -31,6 +31,7 @@ import (
 	rudderAPI "github.com/nebril/helm/pkg/proto/hapi/rudder"
 	"github.com/nebril/helm/pkg/rudder"
 	"github.com/nebril/helm/pkg/version"
+	"github.com/nebril/rudder-appcontroller/pkg/appcontrollerutil"
 )
 
 var kubeClient *kube.Client
@@ -113,8 +114,7 @@ func (r *ReleaseModuleServiceServer) UpgradeRelease(ctx context.Context, in *rud
 
 func (r *ReleaseModuleServiceServer) ReleaseStatus(ctx context.Context, in *rudderAPI.ReleaseStatusRequest) (*rudderAPI.ReleaseStatusResponse, error) {
 	grpclog.Print("status")
-
-	resp, err := kubeClient.Get(in.Release.Namespace, bytes.NewBufferString(in.Release.Manifest))
+	resp, err := appcontrollerutil.GetStatus(kubeClient, in.Release.Namespace, bytes.NewBufferString(in.Release.Manifest))
 	in.Release.Info.Status.Resources = resp
 	return &rudderAPI.ReleaseStatusResponse{
 		Release: in.Release,

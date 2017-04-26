@@ -1,5 +1,5 @@
-hash: bf66cfef64ab8f5e45abe3a8fc61efe1d225e4b8028d47461f31c5aa5205f41d
-updated: 2017-04-19T12:49:32.031590717+03:00
+hash: 6fcc6ff9e56dec42e60b4cebc4629381a7c2709dba59ddb0a917c49c42ff7fb1
+updated: 2017-04-25T16:58:35.227048538+03:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -162,6 +162,8 @@ imports:
   version: cfc62d2de68d9e7f52c9c84f976dc93502bf59ab
   subpackages:
   - cmd/format
+- name: github.com/Mirantis/k8s-AppController
+  version: cfc62d2de68d9e7f52c9c84f976dc93502bf59ab
 - name: github.com/mitchellh/go-wordwrap
   version: ad45545899c7b13c020ea92b2072220eefad42b8
 - name: github.com/nebril/helm
