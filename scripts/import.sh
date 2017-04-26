@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-IMAGE_REPO=${IMAGE_REPO:-mirantis/rudder-appcontroller}
+IMAGE_REPO=${IMAGE_REPO:-helm/rudder-appcontroller}
 IMAGE_TAG=${IMAGE_TAG:-latest}
 NUM_NODES=${NUM_NODES:-2}
 TMP_IMAGE_PATH=${TMP_IMAGE_PATH:-/tmp/image.tar}

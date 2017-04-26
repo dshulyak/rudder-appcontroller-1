@@ -15,27 +15,27 @@
 package e2e
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strconv"
-
+	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
-
-	"strings"
-
-	"bytes"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 const (
-	experimentalTillerImage string = "nebril/tiller"
-	rudderAppcontroller     string = "rudder"
+	experimentalTillerImage  string = "nebril/tiller"
+	rudderAppcontroller      string = "rudder"
+	tillerDeploymentName     string = "tiller-deploy"
+	rudderAppcontrollerImage string = "helm/rudder-appcontroller"
+	appcontrollerPod         string = "appcontroller"
 )
 
 // HelmManager provides functionality to install client/server helm and use it
@@ -76,8 +76,11 @@ func (m *BinaryHelmManager) InstallTiller() error {
 	By("Waiting for tiller pod")
 	waitTillerPod(m.Clientset, m.Namespace)
 	if enableRudder {
-		By("Enabling rudder pod")
-		prepareRudder(m.Clientset, m.Namespace)
+		By("Adding rudder")
+		addRudderToTillerPod(m.Clientset, m.Namespace)
+		waitTillerPod(m.Clientset, m.Namespace)
+		By("Adding appcontroller")
+		addAppcontroller(m.Clientset, m.Namespace)
 	}
 	return nil
 }
@@ -91,9 +94,6 @@ func (m *BinaryHelmManager) DeleteTiller(removeHelmHome bool) error {
 	_, err := m.executeUsingHelm(arg...)
 	if err != nil {
 		return err
-	}
-	if enableRudder {
-		return deleteRudder(m.Clientset, m.Namespace)
 	}
 	return nil
 }
@@ -184,31 +184,6 @@ func regexpKeyFromStructuredOutput(key, output string) string {
 	return result[1]
 }
 
-func prepareRudder(clientset kubernetes.Interface, namespace string) {
-	rudder := &v1.Pod{
-		ObjectMeta: v1.ObjectMeta{
-			Name: rudderAppcontroller,
-		},
-		Spec: v1.PodSpec{
-			RestartPolicy: "Always",
-			Containers: []v1.Container{
-				{
-					Name:            "rudder-appcontroller",
-					Image:           "helm/rudder-appcontroller",
-					ImagePullPolicy: v1.PullNever,
-				},
-			},
-		},
-	}
-	_, err := clientset.Core().Pods(namespace).Create(rudder)
-	Expect(err).NotTo(HaveOccurred())
-	WaitForPod(clientset, namespace, rudderAppcontroller, v1.PodRunning)
-}
-
-func deleteRudder(clientset kubernetes.Interface, namespace string) error {
-	return clientset.Core().Pods(namespace).Delete(rudderAppcontroller, nil)
-}
-
 func getNameFromHelmOutput(output string) string {
 	return regexpKeyFromStructuredOutput("NAME", output)
 }
@@ -251,4 +226,53 @@ func prepareArgsFromValues(values map[string]string) string {
 		b.WriteString(",")
 	}
 	return b.String()
+}
+
+func addRudderToTillerPod(clientset kubernetes.Interface, namespace string) {
+	tillerDeployment, err := clientset.Extensions().Deployments(namespace).Get(tillerDeploymentName)
+	Expect(err).NotTo(HaveOccurred())
+	tillerDeployment.Spec.Template.Spec.Containers = append(
+		tillerDeployment.Spec.Template.Spec.Containers,
+		v1.Container{
+			Name:            rudderAppcontroller,
+			Image:           rudderAppcontrollerImage,
+			ImagePullPolicy: v1.PullNever,
+		})
+	_, err = clientset.Extensions().Deployments(namespace).Update(tillerDeployment)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func addAppcontroller(clientset kubernetes.Interface, namespace string) {
+	appControllerObj := &v1.Pod{
+		ObjectMeta: v1.ObjectMeta{
+			Name: appcontrollerPod,
+			Annotations: map[string]string{
+				"pod.alpha.kubernetes.io/init-containers": `[{"name": "kubeac-bootstrap", "image": "mirantis/k8s-appcontroller", "imagePullPolicy": "Never", "command": ["kubeac", "bootstrap", "/opt/kubeac/manifests"]}]`,
+			},
+		},
+		Spec: v1.PodSpec{
+			RestartPolicy: "Always",
+			Containers: []v1.Container{
+				{
+					Name:            "kubeac",
+					Image:           "mirantis/k8s-appcontroller",
+					Command:         []string{"kubeac", "run"},
+					ImagePullPolicy: v1.PullNever,
+					Env: []v1.EnvVar{
+						{
+							Name:  "KUBERNETES_AC_LABEL_SELECTOR",
+							Value: "",
+						},
+						{
+							Name:  "KUBERNETES_AC_POD_NAMESPACE",
+							Value: namespace,
+						},
+					},
+				},
+			},
+		},
+	}
+	acPod, err := clientset.Core().Pods(namespace).Create(appControllerObj)
+	Expect(err).NotTo(HaveOccurred())
+	WaitForPod(clientset, namespace, acPod.Name, v1.PodRunning)
 }

@@ -6,11 +6,15 @@ import (
 	"io"
 	"log"
 
+	"google.golang.org/grpc/grpclog"
+
 	"k8s.io/client-go/pkg/labels"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
+
+	"strings"
 
 	"github.com/Mirantis/k8s-AppController/pkg/client"
 	"github.com/Mirantis/k8s-AppController/pkg/report"
@@ -25,7 +29,7 @@ type missingResource struct {
 }
 
 func (m *missingResource) Key() string {
-	return fmt.Sprintf("%s/%s", m.name, m.kind)
+	return fmt.Sprintf("%s/%s", strings.ToLower(m.kind), m.name)
 }
 
 func GetStatus(helmClient *kube.Client, namespace string, reader io.Reader) (string, error) {
@@ -40,7 +44,7 @@ func GetStatus(helmClient *kube.Client, namespace string, reader io.Reader) (str
 		obj, err := resource.NewHelper(info.Client, info.Mapping).Get(info.Namespace, info.Name, info.Export)
 		if err != nil {
 			log.Printf("WARNING: Failed Get for resource %q: %s", info.Name, err)
-			missing = append(missing, &missingResource{info.Name, info.GetObjectKind(), info.Mapping.Resource})
+			missing = append(missing, &missingResource{info.Name, info.GetObjectKind().GroupVersionKind().Kind, info.Mapping.Resource})
 			return nil
 		}
 		// We need to grab the ObjectReference so we can correctly group the objects.
@@ -80,6 +84,11 @@ func GetStatus(helmClient *kube.Client, namespace string, reader io.Reader) (str
 			return "", err
 		}
 	}
+	if len(objs) == 0 {
+		if _, err := buf.WriteString("\n"); err != nil {
+			return "", err
+		}
+	}
 	if len(missing) > 0 {
 		namespacedClient, err := client.NewForNamespace("", namespace)
 		if err != nil {
@@ -94,11 +103,12 @@ func GetStatus(helmClient *kube.Client, namespace string, reader io.Reader) (str
 		if err != nil {
 			return "", fmt.Errorf("couldn't create a dependency graph. Err: %v", err)
 		}
-
 		buf.WriteString("==> MISSING\nKIND\t\tNAME\t\tSTATUS\t\n")
 		for _, m := range missing {
-			scheduledResource := graph[m.Key()]
-			printMissingState(buf, m, scheduledResource.GetNodeReport(m.Key()))
+			grpclog.Printf("Looking for key %v in resource graph", m.Key())
+			if scheduledResource, exist := graph[m.Key()]; exist {
+				printMissingState(buf, m, scheduledResource.GetNodeReport(m.Key()))
+			}
 		}
 	}
 	return buf.String(), nil

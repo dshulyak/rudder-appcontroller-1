@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: k8s-appcontroller
+  namespace: kube-system
+  annotations:
+    pod.alpha.kubernetes.io/init-containers: '[{"name": "kubeac-bootstrap", "image": "mirantis/k8s-appcontroller", "imagePullPolicy": "IfNotPresent", "command": ["kubeac", "bootstrap", "/opt/kubeac/manifests"]}]'
+spec:
+  restartPolicy: Always
+  containers:
+  - name: kubeac
+    image: mirantis/k8s-appcontroller
+    imagePullPolicy: IfNotPresent
+    command:  ["kubeac", "run"]
+    env:
+    - name: KUBERNETES_AC_LABEL_SELECTOR
+      value: ""
+    - name: KUBERNETES_AC_POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace

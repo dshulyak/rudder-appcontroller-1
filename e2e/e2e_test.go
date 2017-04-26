@@ -56,6 +56,9 @@ var _ = Describe("Basic Suite", func() {
 	})
 
 	It("Should be possible to create/delete/upgrade/rollback and check status of wordpress chart", func() {
+		if enableRudder {
+			Skip("Rudder doesnt support all commands at this moment")
+		}
 		chartName := "stable/wordpress"
 		By("Install chart stable/wordpress")
 		releaseName, err := helm.Install(chartName, nil)
@@ -68,5 +71,17 @@ var _ = Describe("Basic Suite", func() {
 		Expect(helm.Rollback(releaseName, 1)).NotTo(HaveOccurred())
 		By("Deleting release " + releaseName)
 		Expect(helm.Delete(releaseName)).NotTo(HaveOccurred())
+	})
+
+	It("Rudder based helm installation should be able to install and check status of the chart", func() {
+		if !enableRudder {
+			Skip("This is temporary test for rudder based installations")
+		}
+		chartName := "stable/wordpress"
+		By("Install chart stable/wordpress")
+		releaseName, err := helm.Install(chartName, nil)
+		Expect(err).NotTo(HaveOccurred())
+		By("Check status of release " + releaseName)
+		Expect(helm.Status(releaseName)).NotTo(HaveOccurred())
 	})
 })

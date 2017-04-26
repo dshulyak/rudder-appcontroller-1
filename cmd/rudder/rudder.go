@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/helm/rudder-appcontroller/pkg/appcontrollerutil"
+
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -31,7 +33,6 @@ import (
 	rudderAPI "github.com/nebril/helm/pkg/proto/hapi/rudder"
 	"github.com/nebril/helm/pkg/rudder"
 	"github.com/nebril/helm/pkg/version"
-	"github.com/nebril/rudder-appcontroller/pkg/appcontrollerutil"
 )
 
 var kubeClient *kube.Client
