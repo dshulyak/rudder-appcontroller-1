@@ -17,25 +17,35 @@ package e2e
 import (
 	"flag"
 	"fmt"
+	"strconv"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"time"
+	"strings"
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/errors"
 	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/apis/rbac/v1alpha1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+)
+
+const (
+	rbacServiceAccountAdmin = "system:serviceaccount-admin"
 )
 
 // TODO move this variables under single object TestContext
 var url string
 var enableRudder bool
+var saveNamespace bool
 
 func init() {
 	flag.StringVar(&url, "cluster-url", "http://127.0.0.1:8080", "apiserver address to use with restclient")
-	flag.BoolVar(&enableRudder, "use-rudder", false, "Use to enable rudder")
+	flag.BoolVar(&enableRudder, "enable-rudder", false, "Use to enable rudder")
+	flag.BoolVar(&saveNamespace, "save-namespace", false, "Use if you want to take a look at namespaces after tests are passed")
 }
 
 func LoadConfig() *rest.Config {
@@ -79,4 +89,39 @@ func WaitForPod(clientset kubernetes.Interface, namespace string, name string, p
 		return nil
 	}, 1*time.Minute, 3*time.Second).Should(BeNil())
 	return podUpdated
+}
+
+// AddServiceAccountToAdmins will add system:serviceaccounts to cluster-admin ClusterRole
+func AddServiceAccountToAdmins(c kubernetes.Interface) {
+	version, err := c.Discovery().ServerVersion()
+	Expect(err).NotTo(HaveOccurred())
+	versionToParse := version.Minor
+	if strings.HasSuffix(versionToParse, "+") {
+		versionToParse = versionToParse[:len(versionToParse)-1]
+	}
+	majorVersion, err := strconv.Atoi(version.Minor)
+	Expect(err).NotTo(HaveOccurred())
+	Logf("Kubernetes is running version %v\n", majorVersion)
+	if majorVersion < 6 {
+		return
+	}
+	By("Adding service account group to cluster-admin role")
+	roleBinding := &v1alpha1.ClusterRoleBinding{
+		ObjectMeta: v1.ObjectMeta{
+			Name: rbacServiceAccountAdmin,
+		},
+		Subjects: []v1alpha1.Subject{{
+			Kind: "Group",
+			Name: "system:serviceaccounts",
+		}},
+		RoleRef: v1alpha1.RoleRef{
+			Kind:     "ClusterRole",
+			Name:     "cluster-admin",
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+	_, err = c.Rbac().ClusterRoleBindings().Create(roleBinding)
+	if err != nil && !errors.IsAlreadyExists(err) {
+		Expect(err).NotTo(HaveOccurred(), "Failed to create role binding for serviceaccounts")
+	}
 }

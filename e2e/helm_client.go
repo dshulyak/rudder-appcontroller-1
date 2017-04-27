@@ -74,10 +74,18 @@ func (m *BinaryHelmManager) InstallTiller() error {
 		return err
 	}
 	By("Waiting for tiller pod")
-	waitTillerPod(m.Clientset, m.Namespace)
+	pod := waitTillerPod(m.Clientset, m.Namespace)
 	if enableRudder {
 		By("Adding rudder")
 		addRudderToTillerPod(m.Clientset, m.Namespace)
+		if pod != nil {
+			By("Removing original rudder pod " + pod.Name)
+			zero := int64(0)
+			err := m.Clientset.Core().Pods(m.Namespace).Delete(pod.Name, &v1.DeleteOptions{
+				GracePeriodSeconds: &zero,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
 		waitTillerPod(m.Clientset, m.Namespace)
 		By("Adding appcontroller")
 		addAppcontroller(m.Clientset, m.Namespace)
@@ -192,7 +200,8 @@ func getStatusFromHelmOutput(output string) string {
 	return regexpKeyFromStructuredOutput("STATUS", output)
 }
 
-func waitTillerPod(clientset kubernetes.Interface, namespace string) {
+func waitTillerPod(clientset kubernetes.Interface, namespace string) *v1.Pod {
+	var tillerPod *v1.Pod
 	Eventually(func() bool {
 		pods, err := clientset.Core().Pods(namespace).List(v1.ListOptions{})
 		if err != nil {
@@ -202,7 +211,7 @@ func waitTillerPod(clientset kubernetes.Interface, namespace string) {
 			if !strings.Contains(pod.Name, "tiller") {
 				continue
 			}
-			Logf("Found tiller pod. Phase %v\n", pod.Status.Phase)
+			Logf("Found tiller pod %s. Phase %v\n", pod.Name, pod.Status.Phase)
 			if pod.Status.Phase != v1.PodRunning {
 				return false
 			}
@@ -210,11 +219,16 @@ func waitTillerPod(clientset kubernetes.Interface, namespace string) {
 				if cond.Type != v1.PodReady {
 					continue
 				}
-				return cond.Status == v1.ConditionTrue
+				readiness := cond.Status == v1.ConditionTrue
+				if readiness {
+					tillerPod = &pod
+				}
+				return readiness
 			}
 		}
 		return false
 	}, 2*time.Minute, 5*time.Second).Should(BeTrue(), "tiller pod is not running in namespace "+namespace)
+	return tillerPod
 }
 
 func prepareArgsFromValues(values map[string]string) string {
@@ -247,7 +261,7 @@ func addAppcontroller(clientset kubernetes.Interface, namespace string) {
 		ObjectMeta: v1.ObjectMeta{
 			Name: appcontrollerPod,
 			Annotations: map[string]string{
-				"pod.alpha.kubernetes.io/init-containers": `[{"name": "kubeac-bootstrap", "image": "mirantis/k8s-appcontroller", "imagePullPolicy": "Never", "command": ["kubeac", "bootstrap", "/opt/kubeac/manifests"]}]`,
+				"pod.alpha.kubernetes.io/init-containers": `[{"name": "kubeac-bootstrap", "image": "mirantis/k8s-appcontroller", "imagePullPolicy": "IfNotPresent", "command": ["kubeac", "bootstrap", "/opt/kubeac/manifests"]}]`,
 			},
 		},
 		Spec: v1.PodSpec{
@@ -257,7 +271,7 @@ func addAppcontroller(clientset kubernetes.Interface, namespace string) {
 					Name:            "kubeac",
 					Image:           "mirantis/k8s-appcontroller",
 					Command:         []string{"kubeac", "run"},
-					ImagePullPolicy: v1.PullNever,
+					ImagePullPolicy: v1.PullIfNotPresent,
 					Env: []v1.EnvVar{
 						{
 							Name:  "KUBERNETES_AC_LABEL_SELECTOR",

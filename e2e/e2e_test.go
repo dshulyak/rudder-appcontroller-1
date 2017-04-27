@@ -39,6 +39,7 @@ var _ = Describe("Basic Suite", func() {
 			},
 		}
 		namespace, err = clientset.Core().Namespaces().Create(namespaceObj)
+		AddServiceAccountToAdmins(clientset)
 		Expect(err).NotTo(HaveOccurred())
 		helm = &BinaryHelmManager{
 			Namespace: namespace.Name,
@@ -49,6 +50,10 @@ var _ = Describe("Basic Suite", func() {
 	})
 
 	AfterEach(func() {
+		if saveNamespace {
+			By("Tear down for " + namespace.Name + " was disabled for debuging purposes")
+			return
+		}
 		By("Removing namespace")
 		DeleteNS(clientset, namespace)
 		By("Removing tiller")
@@ -56,32 +61,21 @@ var _ = Describe("Basic Suite", func() {
 	})
 
 	It("Should be possible to create/delete/upgrade/rollback and check status of wordpress chart", func() {
-		if enableRudder {
-			Skip("Rudder doesnt support all commands at this moment")
-		}
 		chartName := "stable/wordpress"
 		By("Install chart stable/wordpress")
 		releaseName, err := helm.Install(chartName, nil)
 		Expect(err).NotTo(HaveOccurred())
 		By("Check status of release " + releaseName)
 		Expect(helm.Status(releaseName)).NotTo(HaveOccurred())
+		if enableRudder {
+			By("Rudder supports only install and status check for now. Test is finished")
+			return
+		}
 		By("Upgrading release " + releaseName)
 		Expect(helm.Upgrade(chartName, releaseName, map[string]string{"image": "bitnami/wordpress:4.7.3-r1"})).NotTo(HaveOccurred())
 		By("Rolling back release " + releaseName + "to a first revision")
 		Expect(helm.Rollback(releaseName, 1)).NotTo(HaveOccurred())
 		By("Deleting release " + releaseName)
 		Expect(helm.Delete(releaseName)).NotTo(HaveOccurred())
-	})
-
-	It("Rudder based helm installation should be able to install and check status of the chart", func() {
-		if !enableRudder {
-			Skip("This is temporary test for rudder based installations")
-		}
-		chartName := "stable/wordpress"
-		By("Install chart stable/wordpress")
-		releaseName, err := helm.Install(chartName, nil)
-		Expect(err).NotTo(HaveOccurred())
-		By("Check status of release " + releaseName)
-		Expect(helm.Status(releaseName)).NotTo(HaveOccurred())
 	})
 })
